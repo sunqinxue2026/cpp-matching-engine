@@ -1,5 +1,6 @@
 #pragma once
 #include "OrderBook.h"
+#include "Trade.h"
 namespace matching {
 struct OrderRequest {
     OrderId order_id;
@@ -34,6 +35,8 @@ public:
     std::size_t history_count() const noexcept { return orders_.size(); }
     SequenceId last_sequence() const noexcept { return last_sequence_; }
 private:
+    friend class MatchingEngine;
+    SubmitResult submit_impl(const OrderRequest& request, std::vector<Trade>* trades);
     std::string symbol_;
     OrderStore orders_;
     OrderBook book_;

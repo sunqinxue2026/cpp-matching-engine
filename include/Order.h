@@ -25,6 +25,12 @@ public:
     SequenceId sequence() const noexcept { return sequence_; }
     OrderStatus status() const noexcept { return status_; }
 private:
+    friend class OrderManager;
+    // Only the manager commits prevalidated positive fills.
+    void apply_fill(Quantity quantity) noexcept {
+        remaining_ -= quantity;
+        status_ = remaining_ == 0 ? OrderStatus::FILLED : OrderStatus::PARTIALLY_FILLED;
+    }
     OrderId id_;
     std::string symbol_;
     Side side_;

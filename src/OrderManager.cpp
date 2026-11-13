@@ -1,5 +1,6 @@
 #include "OrderManager.h"
 #include <limits>
+#include <algorithm>
 #include <stdexcept>
 #include <utility>
 namespace matching {
@@ -26,6 +27,9 @@ std::optional<SubmitResult> OrderManager::submission(OrderId id) const {
     return it == submissions_.end() ? std::nullopt : std::optional<SubmitResult>(it->second);
 }
 SubmitResult OrderManager::submit(const OrderRequest& request) {
+    return submit_impl(request, nullptr);
+}
+SubmitResult OrderManager::submit_impl(const OrderRequest& request, std::vector<Trade>* trades) {
     const auto reject = [&](SubmitError error) {
         return SubmitResult{request.order_id, OrderStatus::REJECTED, error, 0};
     };
@@ -53,10 +57,46 @@ SubmitResult OrderManager::submit(const OrderRequest& request) {
             request.symbol, request.side, request.price, request.quantity, sequence);
         if (!inserted.second) throw std::logic_error("order history and ID ledger disagree");
         created = true;
-        book_.insert(request.order_id);
-        // No allocations or throwing operations after successful book insertion.
+        auto& incoming = inserted.first->second;
+        struct Fill { OrderId passive; Quantity quantity; };
+        std::vector<Fill> fills;
+        std::vector<Trade> pending;
+        Quantity remainder = request.quantity;
+        if (trades) {
+            const Side opposite = request.side == Side::BUY ? Side::SELL : Side::BUY;
+            // Snapshot planning never mutates the live book or passive orders.
+            for (const auto& level : book_.levels(opposite)) {
+                const bool crosses = request.side == Side::BUY ? request.price >= level.price : request.price <= level.price;
+                if (!crosses || remainder == 0) break;
+                for (const auto id : book_.orders_at(opposite, level.price)) {
+                    const auto& passive = orders_.at(id);
+                    const auto quantity = std::min(remainder, passive.remaining_quantity());
+                    if (pending.size() >= std::numeric_limits<std::uint64_t>::max() - trades->size())
+                        throw std::overflow_error("trade sequence exhausted");
+                    const auto tid = static_cast<std::uint64_t>(trades->size() + pending.size()) + 1;
+                    fills.push_back({id, quantity});
+                    pending.push_back({tid, symbol_, request.side == Side::BUY ? request.order_id : id,
+                        request.side == Side::SELL ? request.order_id : id, passive.price(), quantity, tid});
+                    remainder -= quantity;
+                    if (remainder == 0) break;
+                }
+            }
+            if (pending.size() > trades->max_size() - trades->size())
+                throw std::length_error("trade storage exhausted");
+            trades->reserve(trades->size() + pending.size());
+        }
+        // The new entity is private; prepare its residual before structural insertion.
+        if (remainder != request.quantity) incoming.apply_fill(request.quantity - remainder);
+        if (remainder > 0) book_.insert(request.order_id);
+        // Commit: all allocation is finished. IDs and fills were validated above.
+        for (const auto& fill : fills) {
+            auto& passive = orders_.at(fill.passive);
+            passive.apply_fill(fill.quantity);
+            if (passive.remaining_quantity() == 0) book_.erase(fill.passive);
+        }
+        if (trades) for (auto& trade : pending) trades->push_back(std::move(trade));
         last_sequence_ = sequence;
-        recorded->second = {request.order_id, OrderStatus::NEW, SubmitError::NONE, sequence};
+        recorded->second = {request.order_id, incoming.status(), SubmitError::NONE, sequence};
         return recorded->second;
     } catch (const std::invalid_argument&) {
         if (created) orders_.erase(request.order_id);
