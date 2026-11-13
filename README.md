@@ -6,7 +6,7 @@ C++ Limit Order Book and Matching Engine
 
 ## 当前状态
 
-第一至第七阶段均已验收；第七阶段已于2026-11-13由负责人验收通过，第八阶段未开始。验证结果见[第一阶段验收报告](docs/第一阶段_总体架构与订单模型验收.md)及[第二阶段验收报告](docs/第二阶段_订单簿与订单索引验收.md)。测试现包含原有六组CTest契约程序及七个GoogleTest回归案例。
+第一至第八阶段均已验收；第八阶段于2026-11-13由负责人验收通过。八阶段开发范围已完成，当前Linux最终验证及其他未验证事项仍见第八阶段报告，不因验收而视为通过。验证结果见[第一阶段验收报告](docs/第一阶段_总体架构与订单模型验收.md)及[第二阶段验收报告](docs/第二阶段_订单簿与订单索引验收.md)。测试现包含原有六组CTest契约程序及七个GoogleTest回归案例。
 
 ## Linux 构建
 
@@ -67,6 +67,20 @@ TradeManager统一拥有成交历史、分配成交ID/序号并预留批次容�
 
 本机C++17 Debug构建21步成功，CTest 6/6程序通过，5.22秒；没有当前Linux、GoogleTest、Sanitizer或性能基准证据。详见[第六阶段验收报告](docs/第六阶段_撤单与市场深度验收.md)。第六阶段已验收，本次将代码、测试与关联文档提交并推送GitHub。
 
+## 第八阶段：性能测试与工程文档
+
+第八阶段新增独立 `performance_benchmark` 基准程序，使用 `std::chrono::steady_clock` 分别测量非交叉提交、活动订单撤销和逐对撮合。负载为1000、10000、100000；输出总耗时、ns/op、ops/s和checksum，并记录编译器、C++标准、硬件并发线程数及计时边界。基准只通过 `MatchingEngine` 正式接口运行，不进入CTest正确性套件。
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMATCHING_BUILD_BENCHMARKS=ON
+cmake --build build --parallel 2
+./build/performance_benchmark --output benchmark_results.csv
+```
+
+提交和撤单基准使用每单独立价格档；撮合基准逐对提交被动卖单和主动买单，每对产生一条成交，避免把某一种极端深度负载冒充为通用吞吐。结果必须结合机器、编译器、Debug/Release、负载和计时边界解释，不能跨环境直接比较。
+
+第八阶段已于2026-11-13由负责人验收通过，性能基准代码与工程文档纳入本次发布；详见[第八阶段验收报告](docs/第八阶段_性能测试与工程文档验收.md)。
+
 ## 第七阶段：单元测试与回归验证
 
 GoogleTest v1.15.2由CMake FetchContent获取，默认开启MATCHING_BUILD_GTEST；首次配置需要访问依赖源。已备好源码时，可传入`-DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=<源码目录>`。离线且没有源码时，可配置`-DMATCHING_BUILD_GTEST=OFF`，仅运行原有六组契约测试；这不等于运行完整第七阶段矩阵。
@@ -75,4 +89,4 @@ GoogleTest v1.15.2由CMake FetchContent获取，默认开启MATCHING_BUILD_GTEST
 
 2026-11-13本机Windows C++17 Debug构建31步成功，CTest **13/13通过，6.14秒**（7个GoogleTest案例+6组契约程序）。样例运行成功。GoogleTest配置缺C编译器问题已通过补C包装器解决；ABI探测/目标架构警告仍存在。本轮未运行Linux CI、Sanitizer、内存故障注入或性能基准。此前章节的测试计数与未实现范围均按当时阶段理解。
 
-详见[第七阶段验收报告](docs/第七阶段_单元测试与回归验证验收.md)。第七阶段已验收，本次将测试、CMake及关联文档提交并推送GitHub；第八阶段未开始。
+详见[第七阶段验收报告](docs/第七阶段_单元测试与回归验证验收.md)。第七阶段已验收，相关测试、CMake及文档已纳入发布。
