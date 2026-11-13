@@ -31,6 +31,8 @@ private:
         remaining_ -= quantity;
         status_ = remaining_ == 0 ? OrderStatus::FILLED : OrderStatus::PARTIALLY_FILLED;
     }
+    // Cancellation preserves the unexecuted remainder for audit.
+    void cancel() noexcept { status_ = OrderStatus::CANCELED; }
     OrderId id_;
     std::string symbol_;
     Side side_;

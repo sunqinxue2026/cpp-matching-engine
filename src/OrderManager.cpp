@@ -17,6 +17,37 @@ std::string_view to_string(SubmitError error) noexcept {
     }
     return "UNKNOWN";
 }
+std::string_view to_string(CancelError error) noexcept {
+    switch (error) {
+    case CancelError::NONE: return "NONE";
+    case CancelError::NOT_FOUND: return "NOT_FOUND";
+    case CancelError::REJECTED_ORDER: return "REJECTED_ORDER";
+    case CancelError::ALREADY_FILLED: return "ALREADY_FILLED";
+    case CancelError::ALREADY_CANCELED: return "ALREADY_CANCELED";
+    }
+    return "UNKNOWN";
+}
+CancelResult OrderManager::cancelOrder(OrderId id) {
+    auto found = orders_.find(id);
+    if (found == orders_.end()) {
+        const auto submitted = submissions_.find(id);
+        if (submitted != submissions_.end() && !submitted->second.accepted())
+            return {id, OrderStatus::REJECTED, CancelError::REJECTED_ORDER};
+        return {id, std::nullopt, CancelError::NOT_FOUND};
+    }
+    auto& order = found->second;
+    if (order.status() == OrderStatus::FILLED)
+        return {id, order.status(), CancelError::ALREADY_FILLED};
+    if (order.status() == OrderStatus::CANCELED)
+        return {id, order.status(), CancelError::ALREADY_CANCELED};
+    if ((order.status() != OrderStatus::NEW && order.status() != OrderStatus::PARTIALLY_FILLED)
+        || !book_.contains(id))
+        throw std::logic_error("active order and book disagree during cancellation");
+    // Structural removal precedes the no-throw terminal state change.
+    if (!book_.erase(id)) throw std::logic_error("active order disappeared during cancellation");
+    order.cancel();
+    return {id, order.status(), CancelError::NONE};
+}
 OrderManager::OrderManager(std::string symbol, SequenceId last_sequence)
     : symbol_(std::move(symbol)), book_(symbol_, orders_), last_sequence_(last_sequence) {}
 const Order* OrderManager::find(OrderId id) const noexcept {

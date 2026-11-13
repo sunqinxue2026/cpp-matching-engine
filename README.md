@@ -2,11 +2,11 @@
 
 C++ Limit Order Book and Matching Engine
 
-基于 C++17、STL 和 CMake 的单标的限价撮合项目。分八阶段开发，当前已实现订单模型、订单簿索引、提交管理及价格时间优先撮合核心，独立成交管理已实现，撤单等功能仍按后续阶段推进。不连接交易所，不提供真实下单。
+基于 C++17、STL 和 CMake 的单标的限价撮合项目。分八阶段开发，当前已实现订单模型、订单簿索引、提交管理及价格时间优先撮合核心，独立成交管理、业务撤单和市场深度查询已实现。不连接交易所，不提供真实下单。
 
 ## 当前状态
 
-第一至第五阶段均已验收；第六阶段未开始。验证结果见[第一阶段验收报告](docs/第一阶段_总体架构与订单模型验收.md)及[第二阶段验收报告](docs/第二阶段_订单簿与订单索引验收.md)。测试方案第一阶段采用无需下载依赖的 CTest 契约测试，后续扩展 GoogleTest。
+第一至第六阶段均已验收；第六阶段于2026-11-13由负责人验收通过，第七阶段未开始。验证结果见[第一阶段验收报告](docs/第一阶段_总体架构与订单模型验收.md)及[第二阶段验收报告](docs/第二阶段_订单簿与订单索引验收.md)。测试方案第一阶段采用无需下载依赖的 CTest 契约测试，后续扩展 GoogleTest。
 
 ## Linux 构建
 
@@ -58,3 +58,11 @@ MatchingEngine::submitOrder接收OrderRequest；OrderManager拥有历史、订�
 TradeManager统一拥有成交历史、分配成交ID/序号并预留批次容量，保持被动价和FIFO规则。trades()保留只读vector接口，trade_manager()提供数量及最后序号查询。序号不足整笔返回TRADE_SEQUENCE_EXHAUSTED，不修改被动订单或发布部分成交；成交容量按几何增长。不要跨后续提交保存vector元素地址。
 
 本机C++17 Debug构建18步成功，CTest 5/5程序通过，4.63秒，覆盖双向部分/完全成交、连续成交、数量守恒、终态清理、序号上限及400笔历史扩容。第五阶段已于2026-11-13由负责人验收通过，尚无当前Linux、GoogleTest、故障注入或性能证据。详见[第五阶段验收报告](docs/第五阶段_部分完全成交与成交记录验收.md)。
+
+## 第六阶段：撤单与市场深度
+
+`MatchingEngine::cancelOrder(id)`返回CancelResult，区分NOT_FOUND、REJECTED_ORDER、ALREADY_FILLED、ALREADY_CANCELED；成功为NONE。只允许NEW/PARTIALLY_FILLED撤销，移除活动索引与空档后转CANCELED，保留历史和未成交余额。剩余量在CANCELED状态表示已撤销的未执行量，不再是活动委托；撤单不生成成交、不占用接收或成交序号。首次提交结果不变，当前状态查find。
+
+`marketDepth()`返回独立DepthSnapshot，含best_bid/best_ask、排序后的bids/asks及活动订单数；空侧最优价为nullopt。价档数量为剩余量汇总，快照不受后续交易影响；它不是实时订阅。当前汇总扫描活动订单，撤单平均O(log L)，深度平均O(N+L)，哈希最坏可退化。
+
+本机C++17 Debug构建21步成功，CTest 6/6程序通过，5.22秒；没有当前Linux、GoogleTest、Sanitizer或性能基准证据。详见[第六阶段验收报告](docs/第六阶段_撤单与市场深度验收.md)。第六阶段已验收，本次将代码、测试与关联文档提交并推送GitHub。

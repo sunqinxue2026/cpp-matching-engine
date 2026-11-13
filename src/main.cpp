@@ -11,4 +11,12 @@ int main() {
               << " sell=" << to_string(engine.orders().find(1)->status())
               << " sell_remaining=" << engine.orders().find(1)->remaining_quantity()
               << " invariants=" << engine.orders().book().check_invariants() << '\n';
+    const auto before = engine.marketDepth();
+    std::cout << "before_cancel ask=" << *before.best_ask << " quantity=" << before.asks.front().quantity << '\n';
+    const auto canceled = engine.cancelOrder(1);
+    const auto after = engine.marketDepth();
+    std::cout << "cancel=" << to_string(canceled.error)
+              << " status=" << to_string(*canceled.status)
+              << " retained_remaining=" << engine.orders().find(1)->remaining_quantity()
+              << " active=" << after.active_order_count << '\n';
 }

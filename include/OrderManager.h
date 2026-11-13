@@ -19,6 +19,14 @@ struct SubmitResult {
     bool accepted() const noexcept { return error == SubmitError::NONE; }
 };
 std::string_view to_string(SubmitError error) noexcept;
+enum class CancelError { NONE, NOT_FOUND, REJECTED_ORDER, ALREADY_FILLED, ALREADY_CANCELED };
+struct CancelResult {
+    OrderId order_id;
+    std::optional<OrderStatus> status;
+    CancelError error;
+    bool canceled() const noexcept { return error == CancelError::NONE; }
+};
+std::string_view to_string(CancelError error) noexcept;
 // Owns all orders before the book is constructed; book is destroyed first.
 // Rejected nonzero IDs are reserved, but are not malformed Order objects.
 class OrderManager {
@@ -29,6 +37,7 @@ public:
     OrderManager(OrderManager&&) = delete;
     OrderManager& operator=(OrderManager&&) = delete;
     SubmitResult submit(const OrderRequest& request);
+    CancelResult cancelOrder(OrderId id);
     const Order* find(OrderId id) const noexcept;
     std::optional<SubmitResult> submission(OrderId id) const;
     const OrderBook& book() const noexcept { return book_; }
