@@ -33,3 +33,19 @@ if(BUILD_TESTING)
   target_link_libraries(cancel_depth_tests PRIVATE order_model)
   add_test(NAME cancel_depth_contract COMMAND cancel_depth_tests)
 endif()
+
+# Existing contract tests remain available without downloading dependencies.
+option(MATCHING_BUILD_GTEST "Build GoogleTest regression suite" ON)
+if(BUILD_TESTING AND MATCHING_BUILD_GTEST)
+  include(FetchContent)
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_Declare(googletest
+    URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+  FetchContent_MakeAvailable(googletest)
+  add_executable(engine_regression_tests tests/EngineRegressionTests.cpp)
+  target_link_libraries(engine_regression_tests PRIVATE order_model GTest::gtest_main)
+  include(GoogleTest)
+  gtest_discover_tests(engine_regression_tests DISCOVERY_TIMEOUT 30)
+endif()
