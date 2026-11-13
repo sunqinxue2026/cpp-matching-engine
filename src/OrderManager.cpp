@@ -12,6 +12,7 @@ std::string_view to_string(SubmitError error) noexcept {
     case SubmitError::INVALID_ORDER: return "INVALID_ORDER";
     case SubmitError::SYMBOL_MISMATCH: return "SYMBOL_MISMATCH";
     case SubmitError::LEVEL_OVERFLOW: return "LEVEL_OVERFLOW";
+    case SubmitError::TRADE_SEQUENCE_EXHAUSTED: return "TRADE_SEQUENCE_EXHAUSTED";
     case SubmitError::SEQUENCE_EXHAUSTED: return "SEQUENCE_EXHAUSTED";
     }
     return "UNKNOWN";
@@ -29,7 +30,7 @@ std::optional<SubmitResult> OrderManager::submission(OrderId id) const {
 SubmitResult OrderManager::submit(const OrderRequest& request) {
     return submit_impl(request, nullptr);
 }
-SubmitResult OrderManager::submit_impl(const OrderRequest& request, std::vector<Trade>* trades) {
+SubmitResult OrderManager::submit_impl(const OrderRequest& request, TradeManager* trades) {
     const auto reject = [&](SubmitError error) {
         return SubmitResult{request.order_id, OrderStatus::REJECTED, error, 0};
     };
@@ -71,19 +72,14 @@ SubmitResult OrderManager::submit_impl(const OrderRequest& request, std::vector<
                 for (const auto id : book_.orders_at(opposite, level.price)) {
                     const auto& passive = orders_.at(id);
                     const auto quantity = std::min(remainder, passive.remaining_quantity());
-                    if (pending.size() >= std::numeric_limits<std::uint64_t>::max() - trades->size())
-                        throw std::overflow_error("trade sequence exhausted");
-                    const auto tid = static_cast<std::uint64_t>(trades->size() + pending.size()) + 1;
                     fills.push_back({id, quantity});
-                    pending.push_back({tid, symbol_, request.side == Side::BUY ? request.order_id : id,
-                        request.side == Side::SELL ? request.order_id : id, passive.price(), quantity, tid});
+                    pending.push_back({0, symbol_, request.side == Side::BUY ? request.order_id : id,
+                        request.side == Side::SELL ? request.order_id : id, passive.price(), quantity, 0});
                     remainder -= quantity;
                     if (remainder == 0) break;
                 }
             }
-            if (pending.size() > trades->max_size() - trades->size())
-                throw std::length_error("trade storage exhausted");
-            trades->reserve(trades->size() + pending.size());
+            trades->prepare(pending);
         }
         // The new entity is private; prepare its residual before structural insertion.
         if (remainder != request.quantity) incoming.apply_fill(request.quantity - remainder);
@@ -94,13 +90,17 @@ SubmitResult OrderManager::submit_impl(const OrderRequest& request, std::vector<
             passive.apply_fill(fill.quantity);
             if (passive.remaining_quantity() == 0) book_.erase(fill.passive);
         }
-        if (trades) for (auto& trade : pending) trades->push_back(std::move(trade));
+        if (trades) trades->commit(pending);
         last_sequence_ = sequence;
         recorded->second = {request.order_id, incoming.status(), SubmitError::NONE, sequence};
         return recorded->second;
     } catch (const std::invalid_argument&) {
         if (created) orders_.erase(request.order_id);
         recorded->second = reject(SubmitError::INVALID_ORDER);
+        return recorded->second;
+    } catch (const TradeSequenceExhausted&) {
+        if (created) orders_.erase(request.order_id);
+        recorded->second = reject(SubmitError::TRADE_SEQUENCE_EXHAUSTED);
         return recorded->second;
     } catch (const std::overflow_error&) {
         if (created) orders_.erase(request.order_id);

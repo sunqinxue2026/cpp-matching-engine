@@ -1,6 +1,6 @@
 #pragma once
 #include "OrderBook.h"
-#include "Trade.h"
+#include "TradeManager.h"
 namespace matching {
 struct OrderRequest {
     OrderId order_id;
@@ -10,7 +10,7 @@ struct OrderRequest {
     Quantity quantity;
 };
 enum class SubmitError { NONE, INVALID_ID, DUPLICATE_ID, INVALID_ORDER,
-                         SYMBOL_MISMATCH, LEVEL_OVERFLOW, SEQUENCE_EXHAUSTED };
+                         SYMBOL_MISMATCH, LEVEL_OVERFLOW, TRADE_SEQUENCE_EXHAUSTED, SEQUENCE_EXHAUSTED };
 struct SubmitResult {
     OrderId order_id;
     OrderStatus status;
@@ -36,7 +36,7 @@ public:
     SequenceId last_sequence() const noexcept { return last_sequence_; }
 private:
     friend class MatchingEngine;
-    SubmitResult submit_impl(const OrderRequest& request, std::vector<Trade>* trades);
+    SubmitResult submit_impl(const OrderRequest& request, TradeManager* trades);
     std::string symbol_;
     OrderStore orders_;
     OrderBook book_;
